@@ -80,6 +80,120 @@ class _AyarlarEkraniState extends State<AyarlarEkrani> {
     );
   }
 
+  Widget _hakkindaBilgiSatiri(IconData ikon, String metin) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(
+          ikon,
+          size: 18,
+          color: AppTheme.klasikKirmizi,
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            metin,
+            style: const TextStyle(
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _uygulamaHakkindaKarti(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(
+                  Icons.restaurant_menu_rounded,
+                  color: AppTheme.klasikKirmizi,
+                  size: 24,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'OzCook',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 16,
+                        ),
+                      ),
+                      Text(
+                        'Akıllı Tarif Keşfi ve Mutfak Asistanı',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          color: Theme.of(context).textTheme.bodyMedium?.color ??
+                              AppTheme.ikincilMetin,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.klasikKirmizi.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Text(
+                    'v1.0.0',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.klasikKirmizi,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            const Text(
+              'Malzemelere, kategoriye ve pişirilme yöntemine göre tarif arayabilir, tarif detaylarını inceleyebilir ve beğendiğin tarifleri cihazına indirip çevrimdışı görüntüleyebilirsin.',
+              style: TextStyle(
+                fontSize: 13,
+                height: 1.4,
+              ),
+            ),
+            const Divider(height: 20),
+            _hakkindaBilgiSatiri(
+              Icons.cloud_done_outlined,
+              'Tarif Verileri: TheMealDB API üzerinden sağlanır.',
+            ),
+            const SizedBox(height: 8),
+            _hakkindaBilgiSatiri(
+              Icons.storage_rounded,
+              'Çevrimdışı Arşiv: İndirilen tarifler yerel veritabanında (sqflite) saklanır.',
+            ),
+            const SizedBox(height: 8),
+            _hakkindaBilgiSatiri(
+              Icons.calculate_outlined,
+              'Besin ve Makrolar: Kalori, protein, karbonhidrat ve yağ değerleri kategori ve malzeme bazlı tahmini hesaplamadır.',
+            ),
+            const SizedBox(height: 8),
+            _hakkindaBilgiSatiri(
+              Icons.ondemand_video_outlined,
+              'Videolar: Oynatıcıda açılmayan videoları harici olarak YouTube uygulamasında açabilir veya bağlantısını kopyalayabilirsin.',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final kullanici = widget.mevcutKullanici;
@@ -355,6 +469,16 @@ class _AyarlarEkraniState extends State<AyarlarEkrani> {
               ],
             ),
           ),
+
+          const SizedBox(height: 20),
+
+          // 5. UYGULAMA HAKKINDA
+          Text(
+            'Uygulama Hakkında',
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 8),
+          _uygulamaHakkindaKarti(context),
         ],
       ),
     );
