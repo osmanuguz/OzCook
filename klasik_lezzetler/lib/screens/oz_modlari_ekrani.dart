@@ -3,10 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/screens/kalori_ve_ozday_ekrani.dart';
+import 'package:klasik_lezzetler/screens/tarif_detay_ekrani.dart';
 import 'package:klasik_lezzetler/theme/app_theme.dart';
 
 class OzModlariEkrani extends StatefulWidget {
@@ -34,7 +36,10 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   bool _diyetZamanlamaAktif = false;
 
   List<Tarif> _tumTarifler = [];
+  final Map<String, String> _cevrilenBasliklar = {};
   bool _yukleniyor = true;
+  bool _basliklarCevriliyor = false;
+  int _ceviriOturumId = 0;
 
   String? _aktifMod;
   String _ozFitModu = 'Diyet';
@@ -65,10 +70,40 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
 
   @override
   void dispose() {
+    _ceviriOturumId++;
     _diyetZamanlayici?.cancel();
     _diyetKaloriController.dispose();
     _kiloAlmaKaloriController.dispose();
     super.dispose();
+  }
+
+  String _gosterilecekBaslik(Tarif tarif) {
+    return _cevrilenBasliklar[tarif.id] ?? tarif.baslik;
+  }
+
+  Widget _tarifKucukGorseli(String gorselUrl, {double boyut = 58}) {
+    if (gorselUrl.isEmpty) {
+      return Icon(
+        Icons.restaurant,
+        color: AppTheme.klasikKirmizi,
+        size: boyut * 0.45,
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        gorselUrl,
+        width: boyut,
+        height: boyut,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _err, _stack) => Icon(
+          Icons.restaurant,
+          color: AppTheme.klasikKirmizi,
+          size: boyut * 0.45,
+        ),
+      ),
+    );
   }
 
   Future<void> _bildirimHazirla() async {
@@ -145,9 +180,10 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   }
 
   Future<void> _verileriYukle() async {
+    final oturumId = ++_ceviriOturumId;
     final liste = await _apiServisi.tumTarifleriGetir();
     final gunler = await _vtServisi.ozFitTumGunleriGetir();
-    if (!mounted) return;
+    if (!mounted || oturumId != _ceviriOturumId) return;
 
     final setGunler = <int>{..._gunListesi, ...gunler.keys}.toList()..sort();
 
@@ -159,6 +195,81 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
     });
 
     _gunVerisiniUygula(_aktifGun);
+    unawaited(_basliklariArkaPlandaCevir(liste, oturumId));
+  }
+
+  Future<void> _basliklariArkaPlandaCevir(
+    List<Tarif> tarifler,
+    int oturumId,
+  ) async {
+    final cevrilecekler = tarifler
+        .where(
+          (t) =>
+              t.id.isNotEmpty &&
+              t.baslik.trim().isNotEmpty &&
+              !_cevrilenBasliklar.containsKey(t.id),
+        )
+        .toList();
+
+    if (cevrilecekler.isEmpty || !mounted || oturumId != _ceviriOturumId) {
+      return;
+    }
+
+    setState(() => _basliklarCevriliyor = true);
+
+    const grupBoyutu = 6;
+    for (int i = 0; i < cevrilecekler.length; i += grupBoyutu) {
+      if (!mounted || oturumId != _ceviriOturumId) return;
+
+      final grup = cevrilecekler.skip(i).take(grupBoyutu).toList();
+      final yeniEslesmeler = <String, String>{};
+
+      await Future.wait(
+        grup.map((tarif) async {
+          try {
+            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+            if (ceviri.trim().isNotEmpty) {
+              yeniEslesmeler[tarif.id] = ceviri.trim();
+            }
+          } catch (_) {}
+        }),
+      );
+
+      if (!mounted || oturumId != _ceviriOturumId) return;
+      if (yeniEslesmeler.isNotEmpty) {
+        setState(() {
+          _cevrilenBasliklar.addAll(yeniEslesmeler);
+        });
+      }
+    }
+
+    if (mounted && oturumId == _ceviriOturumId) {
+      setState(() => _basliklarCevriliyor = false);
+    }
+  }
+
+  Future<void> _tarifDetayinaGit(Tarif tarif) async {
+    final gosterilenBaslik = _gosterilecekBaslik(tarif);
+    final detayTarifi = Tarif(
+      id: tarif.id,
+      baslik: gosterilenBaslik,
+      kategori: tarif.kategori,
+      pisirilisSekli: tarif.pisirilisSekli,
+      sureDk: tarif.sureDk,
+      porsiyon: tarif.porsiyon,
+      gorselUrl: tarif.gorselUrl,
+      videoUrl: tarif.videoUrl,
+      besinDegerleri: tarif.besinDegerleri,
+      malzemeler: tarif.malzemeler,
+      etiketler: tarif.etiketler,
+      yapilis: tarif.yapilis,
+      indirildiMi: tarif.indirildiMi,
+    );
+
+    await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TarifDetayEkrani(tarif: detayTarifi)),
+    );
   }
 
   void _gunVerisiniUygula(int gunNo) {
@@ -262,7 +373,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   Future<void> _mevcutGunuKaydet() async {
     final oneriler = _ozFitKaloriOnerileri();
     final varsayilanOneri = oneriler.isNotEmpty
-        ? '${oneriler.first.map((t) => t.baslik).join(' + ')} (${oneriler.first.fold<int>(0, (acc, t) => acc + t.besinDegerleri.kalori)} kcal)'
+        ? '${oneriler.first.map(_gosterilecekBaslik).join(' + ')} (${oneriler.first.fold<int>(0, (acc, t) => acc + t.besinDegerleri.kalori)} kcal)'
         : 'Öneri seçilmedi';
 
     final kayitOneri =
@@ -297,7 +408,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
     final oneriMetni = _seciliOneriMetni.isNotEmpty
         ? _seciliOneriMetni
         : (oneriler.isNotEmpty
-            ? '${oneriler.first.map((t) => t.baslik).join(' + ')} (${oneriler.first.fold<int>(0, (acc, t) => acc + t.besinDegerleri.kalori)} kcal)'
+            ? '${oneriler.first.map(_gosterilecekBaslik).join(' + ')} (${oneriler.first.fold<int>(0, (acc, t) => acc + t.besinDegerleri.kalori)} kcal)'
             : 'Tarif önerisi hazır');
 
     final tamamlananTik = _gunSonuTikleri.values.where((v) => v).length;
@@ -326,7 +437,8 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   }
 
   String _birlesikMetin(Tarif t) {
-    return '${t.baslik} ${t.kategori} ${t.pisirilisSekli} ${t.etiketler.join(' ')} ${t.malzemeler.join(' ')}'
+    final trBaslik = _gosterilecekBaslik(t);
+    return '${t.baslik} $trBaslik ${t.kategori} ${t.pisirilisSekli} ${t.etiketler.join(' ')} ${t.malzemeler.join(' ')}'
         .toLowerCase();
   }
 
@@ -370,6 +482,27 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
     }).toList();
 
     return pratikListe.isNotEmpty ? pratikListe : _tumTarifler;
+  }
+
+  Widget _tarifListeKarti(Tarif tarif) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 10),
+      child: ListTile(
+        leading: _tarifKucukGorseli(tarif.gorselUrl, boyut: 58),
+        title: Text(
+          _gosterilecekBaslik(tarif),
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+        subtitle: Text(
+          '${tarif.kategori} • ${tarif.pisirilisSekli} • ${tarif.besinDegerleri.kalori} kcal • ${tarif.sureDk} dk',
+        ),
+        trailing: const Icon(
+          Icons.chevron_right_rounded,
+          color: AppTheme.klasikKirmizi,
+        ),
+        onTap: () => _tarifDetayinaGit(tarif),
+      ),
+    );
   }
 
   Widget _kapakKarti({
@@ -547,6 +680,13 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_basliklarCevriliyor) ...[
+            const LinearProgressIndicator(
+              color: AppTheme.klasikKirmizi,
+              minHeight: 2.5,
+            ),
+            const SizedBox(height: 10),
+          ],
           Row(
             children: [
               OutlinedButton.icon(
@@ -850,19 +990,22 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 0,
                 (acc, t) => acc + t.besinDegerleri.kalori,
               );
-              final basliklar = grup.map((t) => t.baslik).join(' + ');
+              final basliklar = grup.map(_gosterilecekBaslik).join(' + ');
               final tamMetin = '$basliklar ($toplamKalori kcal)';
+              final ilkTarif = grup.first;
 
               return Card(
                 margin: const EdgeInsets.only(bottom: 10),
                 child: ListTile(
+                  leading: _tarifKucukGorseli(ilkTarif.gorselUrl, boyut: 58),
                   title: Text(
                     basliklar,
                     style: const TextStyle(fontWeight: FontWeight.w700),
                   ),
                   subtitle: Text(
-                    'Toplam: $toplamKalori kcal (Hedef: $_aktifHedefKalori kcal)',
+                    'Toplam: $toplamKalori kcal (Hedef: $_aktifHedefKalori kcal) • Detay için dokun',
                   ),
+                  onTap: () => _tarifDetayinaGit(ilkTarif),
                   trailing: ElevatedButton(
                     onPressed: () {
                       setState(() => _seciliOneriMetni = tamMetin);
@@ -914,38 +1057,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
               ),
             ),
             const SizedBox(height: 14),
-            ..._ozHealthTarifleri().map((tarif) {
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: tarif.gorselUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            tarif.gorselUrl,
-                            width: 58,
-                            height: 58,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _err, _stack) => const Icon(
-                              Icons.restaurant,
-                              color: AppTheme.klasikKirmizi,
-                            ),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.restaurant,
-                          color: AppTheme.klasikKirmizi,
-                        ),
-                  title: Text(
-                    tarif.baslik,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    '${tarif.kategori} • ${tarif.pisirilisSekli} • ${tarif.besinDegerleri.kalori} kcal • ${tarif.sureDk} dk',
-                  ),
-                ),
-              );
-            }),
+            ..._ozHealthTarifleri().map(_tarifListeKarti),
           ] else ...[
             Text(
               'KYK Yurt • Pratik Tarifler',
@@ -956,38 +1068,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
               'Yurt odasında kısa sürede ve az malzeme ile hazırlanabilecek tarifler.',
             ),
             const SizedBox(height: 14),
-            ..._kykYurtTarifleri().map((tarif) {
-              return Card(
-                margin: const EdgeInsets.only(bottom: 10),
-                child: ListTile(
-                  leading: tarif.gorselUrl.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            tarif.gorselUrl,
-                            width: 58,
-                            height: 58,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _err, _stack) => const Icon(
-                              Icons.restaurant,
-                              color: AppTheme.klasikKirmizi,
-                            ),
-                          ),
-                        )
-                      : const Icon(
-                          Icons.restaurant,
-                          color: AppTheme.klasikKirmizi,
-                        ),
-                  title: Text(
-                    tarif.baslik,
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                  subtitle: Text(
-                    '${tarif.kategori} • ${tarif.pisirilisSekli} • ${tarif.besinDegerleri.kalori} kcal • ${tarif.sureDk} dk',
-                  ),
-                ),
-              );
-            }),
+            ..._kykYurtTarifleri().map(_tarifListeKarti),
           ],
         ],
       ),

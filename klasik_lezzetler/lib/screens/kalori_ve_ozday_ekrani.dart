@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/screens/tarif_detay_ekrani.dart';
@@ -24,7 +25,10 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
 
   Timer? _zamanlayici;
   List<Tarif> _tumTarifler = [];
+  final Map<String, String> _cevrilenBasliklar = {};
   bool _yukleniyor = true;
+  bool _basliklarCevriliyor = false;
+  int _ceviriOturumId = 0;
 
   int _hedefKalori = 900;
   int _tukenenKalori = 0;
@@ -43,10 +47,38 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
 
   @override
   void dispose() {
+    _ceviriOturumId++;
     _zamanlayici?.cancel();
     _hedefKaloriController.dispose();
     _ogunKaloriController.dispose();
     super.dispose();
+  }
+
+  String _gosterilecekBaslik(Tarif tarif) {
+    return _cevrilenBasliklar[tarif.id] ?? tarif.baslik;
+  }
+
+  Widget _tarifKucukGorseli(String gorselUrl) {
+    if (gorselUrl.isEmpty) {
+      return const Icon(
+        Icons.restaurant,
+        color: AppTheme.klasikKirmizi,
+      );
+    }
+
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(8),
+      child: Image.network(
+        gorselUrl,
+        width: 56,
+        height: 56,
+        fit: BoxFit.cover,
+        errorBuilder: (_, _err, _stack) => const Icon(
+          Icons.restaurant,
+          color: AppTheme.klasikKirmizi,
+        ),
+      ),
+    );
   }
 
   Future<void> _bildirimHazirla() async {
@@ -83,12 +115,87 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
   }
 
   Future<void> _verileriYukle() async {
+    final oturumId = ++_ceviriOturumId;
     final liste = await _apiServisi.tumTarifleriGetir();
-    if (!mounted) return;
+    if (!mounted || oturumId != _ceviriOturumId) return;
     setState(() {
       _tumTarifler = liste;
       _yukleniyor = false;
     });
+    unawaited(_basliklariArkaPlandaCevir(liste, oturumId));
+  }
+
+  Future<void> _basliklariArkaPlandaCevir(
+    List<Tarif> tarifler,
+    int oturumId,
+  ) async {
+    final cevrilecekler = tarifler
+        .where(
+          (t) =>
+              t.id.isNotEmpty &&
+              t.baslik.trim().isNotEmpty &&
+              !_cevrilenBasliklar.containsKey(t.id),
+        )
+        .toList();
+
+    if (cevrilecekler.isEmpty || !mounted || oturumId != _ceviriOturumId) {
+      return;
+    }
+
+    setState(() => _basliklarCevriliyor = true);
+
+    const grupBoyutu = 6;
+    for (int i = 0; i < cevrilecekler.length; i += grupBoyutu) {
+      if (!mounted || oturumId != _ceviriOturumId) return;
+
+      final grup = cevrilecekler.skip(i).take(grupBoyutu).toList();
+      final yeniEslesmeler = <String, String>{};
+
+      await Future.wait(
+        grup.map((tarif) async {
+          try {
+            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+            if (ceviri.trim().isNotEmpty) {
+              yeniEslesmeler[tarif.id] = ceviri.trim();
+            }
+          } catch (_) {}
+        }),
+      );
+
+      if (!mounted || oturumId != _ceviriOturumId) return;
+      if (yeniEslesmeler.isNotEmpty) {
+        setState(() {
+          _cevrilenBasliklar.addAll(yeniEslesmeler);
+        });
+      }
+    }
+
+    if (mounted && oturumId == _ceviriOturumId) {
+      setState(() => _basliklarCevriliyor = false);
+    }
+  }
+
+  void _detayaGit(Tarif tarif) {
+    final detayTarifi = Tarif(
+      id: tarif.id,
+      baslik: _gosterilecekBaslik(tarif),
+      kategori: tarif.kategori,
+      pisirilisSekli: tarif.pisirilisSekli,
+      sureDk: tarif.sureDk,
+      porsiyon: tarif.porsiyon,
+      gorselUrl: tarif.gorselUrl,
+      videoUrl: tarif.videoUrl,
+      besinDegerleri: tarif.besinDegerleri,
+      malzemeler: tarif.malzemeler,
+      etiketler: tarif.etiketler,
+      yapilis: tarif.yapilis,
+      indirildiMi: tarif.indirildiMi,
+    );
+
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => TarifDetayEkrani(tarif: detayTarifi)),
+    );
   }
 
   void _durumMesajiGoster(String mesaj) {
@@ -293,6 +400,13 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_basliklarCevriliyor) ...[
+            const LinearProgressIndicator(
+              color: AppTheme.klasikKirmizi,
+              minHeight: 2.5,
+            ),
+            const SizedBox(height: 10),
+          ],
           Text(
             'Günlük Öğün & Kalori Takibi',
             style: Theme.of(context).textTheme.headlineMedium,
@@ -507,10 +621,12 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
               0,
               (acc, t) => acc + t.besinDegerleri.kalori,
             );
-            final basliklar = grup.map((t) => t.baslik).join(' + ');
+            final basliklar = grup.map(_gosterilecekBaslik).join(' + ');
+            final ilkTarif = grup.first;
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
+                leading: _tarifKucukGorseli(ilkTarif.gorselUrl),
                 title: Text(
                   basliklar,
                   style: const TextStyle(
@@ -529,14 +645,7 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
                   ),
                   child: const Text('Yedim'),
                 ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TarifDetayEkrani(tarif: grup.first),
-                    ),
-                  );
-                },
+                onTap: () => _detayaGit(ilkTarif),
               ),
             );
           }),
@@ -552,25 +661,8 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
             return Card(
               margin: const EdgeInsets.only(bottom: 10),
               child: ListTile(
-                leading: tarif.gorselUrl.isNotEmpty
-                    ? ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          tarif.gorselUrl,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorBuilder: (_, _err, _stack) => const Icon(
-                            Icons.restaurant,
-                            color: AppTheme.klasikKirmizi,
-                          ),
-                        ),
-                      )
-                    : const Icon(
-                        Icons.restaurant,
-                        color: AppTheme.klasikKirmizi,
-                      ),
-                title: Text('${entry.key}: ${tarif.baslik}'),
+                leading: _tarifKucukGorseli(tarif.gorselUrl),
+                title: Text('${entry.key}: ${_gosterilecekBaslik(tarif)}'),
                 subtitle: Text(
                   '${tarif.kategori} • ${tarif.besinDegerleri.kalori} kcal • ${tarif.sureDk} dk',
                 ),
@@ -578,14 +670,7 @@ class _KaloriVeOzDayEkraniState extends State<KaloriVeOzDayEkrani> {
                   Icons.chevron_right,
                   color: AppTheme.klasikKirmizi,
                 ),
-                onTap: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => TarifDetayEkrani(tarif: tarif),
-                    ),
-                  );
-                },
+                onTap: () => _detayaGit(tarif),
               ),
             );
           }),
