@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/theme/app_theme.dart';
@@ -20,18 +21,43 @@ class TarifDetayEkrani extends StatefulWidget {
 
 class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
   final VeritabaniServisi _vtServisi = VeritabaniServisi();
+  final TarifApiServisi _apiServisi = TarifApiServisi();
   YoutubePlayerController? _youtubeController;
   String? _videoId;
   bool _videoHataliMi = false;
   bool _indiriliyor = false;
+  bool _cevriliyor = false;
   late bool _indirildiMi;
+  late Tarif _aktifTarif;
 
   @override
   void initState() {
     super.initState();
-    _indirildiMi = widget.tarif.indirildiMi;
+    _aktifTarif = widget.tarif;
+    _indirildiMi = _aktifTarif.indirildiMi;
     _videoHazirla();
     _indirmeDurumunuKontrolEt();
+    _tarifiCevir();
+  }
+
+  Future<void> _tarifiCevir() async {
+    if (_cevriliyor) return;
+    setState(() => _cevriliyor = true);
+
+    try {
+      final cevrilen = await _apiServisi.tarifiTurkceyeCevir(_aktifTarif);
+      if (!mounted) return;
+      cevrilen.indirildiMi = _indirildiMi;
+      setState(() {
+        _aktifTarif = cevrilen;
+      });
+    } catch (_) {
+      // Çeviri servisine erişilemezse mevcut tarif metni korunur.
+    } finally {
+      if (mounted) {
+        setState(() => _cevriliyor = false);
+      }
+    }
   }
 
   String? _idAyikla(String hamDeger) {
@@ -65,7 +91,7 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
   }
 
   void _videoHazirla() {
-    final id = _idAyikla(widget.tarif.videoUrl);
+    final id = _idAyikla(_aktifTarif.videoUrl);
     if (id != null && id.isNotEmpty) {
       _videoId = id;
       _youtubeController = YoutubePlayerController.fromVideoId(
@@ -102,7 +128,7 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
     if (_videoId != null && _videoId!.isNotEmpty) {
       return 'https://www.youtube.com/watch?v=$_videoId';
     }
-    return widget.tarif.videoUrl.trim();
+    return _aktifTarif.videoUrl.trim();
   }
 
   Future<void> _linkiKopyala() async {
@@ -142,9 +168,11 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
     try {
       final indirilenIdler = await _vtServisi.indirilenIdleriGetir();
       if (!mounted) return;
+      final indirildi = indirilenIdler.contains(_aktifTarif.id);
       setState(() {
-        _indirildiMi = indirilenIdler.contains(widget.tarif.id);
-        widget.tarif.indirildiMi = _indirildiMi;
+        _indirildiMi = indirildi;
+        _aktifTarif.indirildiMi = indirildi;
+        widget.tarif.indirildiMi = indirildi;
       });
     } catch (_) {}
   }
@@ -155,25 +183,27 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
 
     try {
       if (_indirildiMi) {
-        await _vtServisi.tarifSil(widget.tarif.id);
+        await _vtServisi.tarifSil(_aktifTarif.id);
+        _aktifTarif.indirildiMi = false;
         widget.tarif.indirildiMi = false;
         if (!mounted) return;
         setState(() => _indirildiMi = false);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppTheme.klasikKirmizi,
-            content: Text('${widget.tarif.baslik} indirilenlerden kaldırıldı.'),
+            content: Text('${_aktifTarif.baslik} indirilenlerden kaldırıldı.'),
           ),
         );
       } else {
+        _aktifTarif.indirildiMi = true;
         widget.tarif.indirildiMi = true;
-        await _vtServisi.tarifKaydet(widget.tarif);
+        await _vtServisi.tarifKaydet(_aktifTarif);
         if (!mounted) return;
         setState(() => _indirildiMi = true);
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: AppTheme.klasikKirmizi,
-            content: Text('${widget.tarif.baslik} cihazına indirildi.'),
+            content: Text('${_aktifTarif.baslik} cihazına indirildi.'),
           ),
         );
       }
@@ -382,7 +412,7 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
 
   @override
   Widget build(BuildContext context) {
-    final tarif = widget.tarif;
+    final tarif = _aktifTarif;
     final controller = _youtubeController;
     final koyuTemaMi = Theme.of(context).brightness == Brightness.dark;
 
@@ -429,6 +459,13 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
                   ),
                 ),
               if (tarif.gorselUrl.isNotEmpty) const SizedBox(height: 16),
+              if (_cevriliyor) ...[
+                const LinearProgressIndicator(
+                  color: AppTheme.klasikKirmizi,
+                  minHeight: 2.5,
+                ),
+                const SizedBox(height: 10),
+              ],
               Text(
                 tarif.baslik,
                 style: Theme.of(context).textTheme.headlineMedium,

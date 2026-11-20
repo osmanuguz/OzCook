@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/turkce_cevirici.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
@@ -543,6 +544,39 @@ class TarifApiServisi {
     }
   }
 
+  Future<Tarif> tarifiTurkceyeCevir(Tarif tarif) async {
+    final cevrilenBaslik = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+
+    final cevrilenMalzemeler = await Future.wait(
+      tarif.malzemeler.map((m) async {
+        final cevrilenAd = await CeviriServisi.malzemeCevir(m.ad);
+        return Malzeme(
+          ad: cevrilenAd,
+          miktar: TurkceCevirici.miktarCevir(m.miktar),
+        );
+      }),
+    );
+
+    final cevrilenYapilis = await Future.wait(
+      tarif.yapilis.map((adim) => CeviriServisi.adimCevir(adim)),
+    );
+
+    return Tarif(
+      id: tarif.id,
+      baslik: cevrilenBaslik,
+      kategori: tarif.kategori,
+      pisirilisSekli: tarif.pisirilisSekli,
+      sureDk: tarif.sureDk,
+      porsiyon: tarif.porsiyon,
+      gorselUrl: tarif.gorselUrl,
+      videoUrl: tarif.videoUrl,
+      besinDegerleri: tarif.besinDegerleri,
+      malzemeler: cevrilenMalzemeler,
+      etiketler: tarif.etiketler,
+      yapilis: cevrilenYapilis,
+    );
+  }
+
   static Tarif mealToTarifPublic(Map<String, dynamic> json) {
     final List<Malzeme> malzemeler = [];
     final List<String> etiketler = [];
@@ -555,7 +589,9 @@ class TarifApiServisi {
         malzemeler.add(
           Malzeme(
             ad: cevrilenAd,
-            miktar: hamMiktar.isEmpty ? 'Yeterince' : hamMiktar,
+            miktar: hamMiktar.isEmpty
+                ? 'Yeterince'
+                : TurkceCevirici.miktarCevir(hamMiktar),
           ),
         );
         etiketler.add(hamAd.toLowerCase());

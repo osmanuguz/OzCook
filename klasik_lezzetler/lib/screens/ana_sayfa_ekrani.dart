@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
@@ -35,9 +36,12 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   final TextEditingController _aramaController = TextEditingController();
 
   List<Tarif> _tumTarifler = [];
+  final Map<String, String> _cevrilenBasliklar = {};
   String _seciliCesit = 'Tümü';
   String _aramaMetni = '';
   bool _yukleniyor = true;
+  bool _basliklarCevriliyor = false;
+  int _ceviriOturumId = 0;
   String? _hata;
   Timer? _aramaDebounce;
 
@@ -49,9 +53,14 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
   @override
   void dispose() {
+    _ceviriOturumId++;
     _aramaDebounce?.cancel();
     _aramaController.dispose();
     super.dispose();
+  }
+
+  String _gosterilecekBaslik(Tarif tarif) {
+    return _cevrilenBasliklar[tarif.id] ?? tarif.baslik;
   }
 
   void _aramaDegisti(String val) {
@@ -63,8 +72,10 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   }
 
   Future<void> _verileriYukle() async {
+    final oturumId = ++_ceviriOturumId;
     setState(() {
       _yukleniyor = true;
+      _basliklarCevriliyor = false;
       _hata = null;
     });
 
@@ -75,13 +86,15 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         t.indirildiMi = indirilenIdler.contains(t.id);
       }
 
-      if (!mounted) return;
+      if (!mounted || oturumId != _ceviriOturumId) return;
       setState(() {
         _tumTarifler = liste;
         _yukleniyor = false;
       });
+
+      unawaited(_basliklariArkaPlandaCevir(liste, oturumId));
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || oturumId != _ceviriOturumId) return;
       setState(() {
         _hata = 'Tarifler yüklenemedi. İnternet bağlantını kontrol et.';
         _yukleniyor = false;
@@ -89,7 +102,58 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     }
   }
 
+  Future<void> _basliklariArkaPlandaCevir(
+    List<Tarif> tarifler,
+    int oturumId,
+  ) async {
+    final cevrilecekler = tarifler
+        .where(
+          (t) =>
+              t.id.isNotEmpty &&
+              t.baslik.trim().isNotEmpty &&
+              !_cevrilenBasliklar.containsKey(t.id),
+        )
+        .toList();
+
+    if (cevrilecekler.isEmpty || !mounted || oturumId != _ceviriOturumId) {
+      return;
+    }
+
+    setState(() => _basliklarCevriliyor = true);
+
+    const grupBoyutu = 6;
+    for (int i = 0; i < cevrilecekler.length; i += grupBoyutu) {
+      if (!mounted || oturumId != _ceviriOturumId) return;
+
+      final grup = cevrilecekler.skip(i).take(grupBoyutu).toList();
+      final yeniEslesmeler = <String, String>{};
+
+      await Future.wait(
+        grup.map((tarif) async {
+          try {
+            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+            if (ceviri.trim().isNotEmpty) {
+              yeniEslesmeler[tarif.id] = ceviri.trim();
+            }
+          } catch (_) {}
+        }),
+      );
+
+      if (!mounted || oturumId != _ceviriOturumId) return;
+      if (yeniEslesmeler.isNotEmpty) {
+        setState(() {
+          _cevrilenBasliklar.addAll(yeniEslesmeler);
+        });
+      }
+    }
+
+    if (mounted && oturumId == _ceviriOturumId) {
+      setState(() => _basliklarCevriliyor = false);
+    }
+  }
+
   void _kaydetButonunaBasildi(Tarif tarif) {
+    final baslik = _gosterilecekBaslik(tarif);
     final kaydedildiMi = widget.kaydedilenIdler.contains(tarif.id);
     widget.onKaydetmeDegisti(tarif.id);
     setState(() {});
@@ -99,8 +163,8 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         backgroundColor: AppTheme.klasikKirmizi,
         content: Text(
           !kaydedildiMi
-              ? '${tarif.baslik} kaydedilenlere eklendi.'
-              : '${tarif.baslik} kaydedilenlerden çıkarıldı.',
+              ? '$baslik kaydedilenlere eklendi.'
+              : '$baslik kaydedilenlerden çıkarıldı.',
         ),
       ),
     );
@@ -117,8 +181,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
     final kat = tarif.kategori.toLowerCase();
     final baslik = tarif.baslik.toLowerCase();
+    final trBaslik = _gosterilecekBaslik(tarif).toLowerCase();
     final etiketler = tarif.etiketler.join(' ').toLowerCase();
-    final birlesik = '$kat $baslik $etiketler';
+    final birlesik = '$kat $baslik $trBaslik $etiketler';
 
     switch (seciliCesit) {
       case 'Kahvaltılık':
@@ -161,19 +226,44 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
     final q = sorgu.trim().toLowerCase();
     if (q.isEmpty) return true;
 
+    final trBaslik = _gosterilecekBaslik(tarif);
     final malzemelerStr = tarif.malzemeler.map((m) => m.ad).join(' ');
     final birlesik =
-        '${tarif.baslik} ${tarif.kategori} ${tarif.pisirilisSekli} $malzemelerStr'
+        '${tarif.baslik} $trBaslik ${tarif.kategori} ${tarif.pisirilisSekli} $malzemelerStr'
             .toLowerCase();
     return birlesik.contains(q);
   }
 
   Future<void> _detayaGit(Tarif tarif) async {
+    final gosterilen = _gosterilecekBaslik(tarif);
+    final detayTarifi = Tarif(
+      id: tarif.id,
+      baslik: gosterilen,
+      kategori: tarif.kategori,
+      pisirilisSekli: tarif.pisirilisSekli,
+      sureDk: tarif.sureDk,
+      porsiyon: tarif.porsiyon,
+      gorselUrl: tarif.gorselUrl,
+      videoUrl: tarif.videoUrl,
+      besinDegerleri: tarif.besinDegerleri,
+      malzemeler: tarif.malzemeler,
+      etiketler: tarif.etiketler,
+      yapilis: tarif.yapilis,
+      indirildiMi: tarif.indirildiMi,
+    );
+
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => TarifDetayEkrani(tarif: tarif)),
+      MaterialPageRoute(builder: (_) => TarifDetayEkrani(tarif: detayTarifi)),
     );
-    _verileriYukle();
+    if (!mounted) return;
+    final indirilenIdler = await VeritabaniServisi().indirilenIdleriGetir();
+    if (!mounted) return;
+    setState(() {
+      for (final t in _tumTarifler) {
+        t.indirildiMi = indirilenIdler.contains(t.id);
+      }
+    });
   }
 
   Widget _tarifGorseli(
@@ -259,6 +349,13 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
+              if (_basliklarCevriliyor) ...[
+                const LinearProgressIndicator(
+                  color: AppTheme.klasikKirmizi,
+                  minHeight: 2.5,
+                ),
+                const SizedBox(height: 10),
+              ],
               Text(
                 'Günün Menüsü',
                 style: Theme.of(context).textTheme.headlineMedium,
@@ -281,7 +378,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                       cacheGenislik: 144,
                     ),
                     title: Text(
-                      gununMenusu.baslik,
+                      _gosterilecekBaslik(gununMenusu),
                       style: Theme.of(context)
                           .textTheme
                           .titleLarge
@@ -416,7 +513,7 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
                         cacheGenislik: 128,
                       ),
                       title: Text(
-                        tarif.baslik,
+                        _gosterilecekBaslik(tarif),
                         style: Theme.of(context)
                             .textTheme
                             .titleLarge
