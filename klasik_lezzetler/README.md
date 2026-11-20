@@ -1,17 +1,37 @@
-# klasik_lezzetler
+# OzCook
 
-A new Flutter project.
+Flutter ile geliştirilmiş tarif keşfi, malzemeye göre arama, çevrimdışı tarif saklama ve tarif detay ekranı sunan bir mutfak uygulamasıdır.
 
-## Getting Started
+## Öne Çıkan Özellikler
 
-This project is a starting point for a Flutter application.
+* **Tarif Keşfi ve Arama:** Yemek adına, kategoriye (`Kahvaltılık`, `Salata`, `Tatlı`, vb.) ve malzemelere göre arama ve filtreleme.
+* **Malzemeye ve Pişirilme Şekline Göre Listeleme:** Eldeki malzemelere ve pişirilme türüne (`Fırın`, `Ocak`, `Pişirmesiz`) göre uygun tarifleri bulma.
+* **Tarif Detay Ekranı:** Malzeme listesi, hazırlanış adımları, tahmini besin/makro değerleri ve tarif videosu görünümü.
+* **YouTube Video Yedek Akışı:** Oynatıcıda video açılamadığında veya hata oluştuğunda harici olarak YouTube uygulamasında/tarayıcıda açma ve video bağlantısını panoya kopyalama desteği.
+* **Çevrimdışı Kayıt:** Seçilen tarifleri yerel veritabanında saklayarak internet bağlantısı olmadan da görüntüleyebilme.
+* **Tema Desteği:** Açık ve koyu tema seçenekleri ile kullanıcı tercihlerinin saklanması.
 
-A few resources to get you started if this is your first Flutter project:
+## Besin ve Makro Değerleri Hakkında Not
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+* Tariflerde gösterilen kalori, protein, karbonhidrat ve yağ değerleri; kategori, malzeme içeriği ve ölçü bilgilerine göre hesaplanan **tahmini** değerlerdir.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+## Kullanılan Teknolojiler ve Paketler
+
+* **Flutter**
+* **TheMealDB API**
+* **http**
+* **sqflite**
+* **shared_preferences**
+* **youtube_player_iframe**
+* **url_launcher**
+
+## Kurulum ve Çalıştırma
+
+1. Depoyu bilgisayarına klonla:
+   `git clone https://github.com/osmanuguz/OzCook.git`
+
+2. Proje dizinine gir ve paketleri yükle:
+   `cd OzCook` ve `flutter pub get`
+
+3. Uygulamayı çalıştır:
+   `flutter run`

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/theme/app_theme.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:youtube_player_iframe/youtube_player_iframe.dart';
 
 class TarifDetayEkrani extends StatefulWidget {
@@ -21,6 +22,7 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
   final VeritabaniServisi _vtServisi = VeritabaniServisi();
   YoutubePlayerController? _youtubeController;
   String? _videoId;
+  bool _videoHataliMi = false;
   bool _indiriliyor = false;
   late bool _indirildiMi;
 
@@ -78,7 +80,22 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
           origin: 'https://www.youtube.com',
         ),
       );
+      _videoDurumunuDinle();
     }
+  }
+
+  void _videoDurumunuDinle() {
+    final controller = _youtubeController;
+    if (controller == null) return;
+
+    controller.listen((event) {
+      final hataVarMi = event.hasError;
+      if (hataVarMi != _videoHataliMi && mounted) {
+        setState(() {
+          _videoHataliMi = hataVarMi;
+        });
+      }
+    });
   }
 
   String _youtubeIzlemeLinki() {
@@ -99,6 +116,26 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
         content: Text('Video bağlantısı panoya kopyalandı.'),
       ),
     );
+  }
+
+  Future<void> _youtubeHariciAc() async {
+    final link = _youtubeIzlemeLinki();
+    final uri = Uri.tryParse(link);
+    if (uri == null) return;
+
+    try {
+      final acildi = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!acildi && mounted) {
+        await _linkiKopyala();
+      }
+    } catch (_) {
+      if (mounted) {
+        await _linkiKopyala();
+      }
+    }
   }
 
   Future<void> _indirmeDurumunuKontrolEt() async {
@@ -183,9 +220,9 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
             TextButton.icon(
-              onPressed: _linkiKopyala,
-              icon: const Icon(Icons.copy_rounded, size: 16),
-              label: const Text('Linki Kopyala'),
+              onPressed: _youtubeHariciAc,
+              icon: const Icon(Icons.open_in_new_rounded, size: 16),
+              label: const Text("YouTube'da Aç"),
               style: TextButton.styleFrom(
                 foregroundColor: AppTheme.klasikKirmizi,
               ),
@@ -200,11 +237,56 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
             aspectRatio: 16 / 9,
           ),
         ),
-        const SizedBox(height: 6),
-        Text(
-          'Video oynatıcıda "Unavailable" görünüyorsa video sahibi uygulama içi gömülü oynatmayı kapatmış veya bağlantı geçersiz olabilir.',
-          style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontSize: 12),
-        ),
+        const SizedBox(height: 8),
+        if (_videoHataliMi)
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.info_outline_rounded,
+                    color: AppTheme.klasikKirmizi,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Video uygulama içinde oynatılamadı. Doğrudan YouTube üzerinden açabilir veya bağlantıyı kopyalayabilirsin.',
+                      style: TextStyle(fontSize: 12.5),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: _linkiKopyala,
+                    child: const Text('Kopyala'),
+                  ),
+                ],
+              ),
+            ),
+          )
+        else
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  'Oynatıcıda hata görünüyorsa sağ üstten YouTube uygulamasında açabilirsin.',
+                  style: Theme.of(context)
+                      .textTheme
+                      .bodyMedium
+                      ?.copyWith(fontSize: 12),
+                ),
+              ),
+              TextButton.icon(
+                onPressed: _linkiKopyala,
+                icon: const Icon(Icons.copy_rounded, size: 15),
+                label: const Text('Linki Kopyala'),
+                style: TextButton.styleFrom(
+                  foregroundColor: AppTheme.klasikKirmizi,
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 20),
       ],
     );
@@ -412,8 +494,8 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
                           ),
                         )
                         .toList(),
-                  ),
                 ),
+              ),
               const SizedBox(height: 20),
               Text(
                 'Hazırlanışı',

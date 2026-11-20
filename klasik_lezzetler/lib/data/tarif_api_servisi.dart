@@ -5,6 +5,20 @@ import 'package:klasik_lezzetler/data/turkce_cevirici.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 
+class _BesinHesapSonucu {
+  final int kalori;
+  final double protein;
+  final double karbonhidrat;
+  final double yag;
+
+  const _BesinHesapSonucu({
+    required this.kalori,
+    required this.protein,
+    required this.karbonhidrat,
+    required this.yag,
+  });
+}
+
 List<Tarif> _hamVerileriTariflereDonustur(List<dynamic> hamYemekler) {
   final Map<String, Tarif> tarifHaritasi = {};
 
@@ -141,6 +155,201 @@ class TarifApiServisi {
           baslik.contains('çikolata');
     }
     return true;
+  }
+
+  static double _miktarKatsayisi(String miktar) {
+    final temiz = miktar.trim().toLowerCase();
+    if (temiz.isEmpty || temiz == 'yeterince') return 1.0;
+
+    final kesirEslesme = RegExp(r'(\d+)\s*/\s*(\d+)').firstMatch(temiz);
+    double deger = 1.0;
+
+    if (kesirEslesme != null) {
+      final pay = double.tryParse(kesirEslesme.group(1)!) ?? 1;
+      final payda = double.tryParse(kesirEslesme.group(2)!) ?? 1;
+      if (payda != 0) {
+        deger = pay / payda;
+      }
+    } else {
+      final sayiEslesme = RegExp(r'(\d+(?:[.,]\d+)?)').firstMatch(temiz);
+      if (sayiEslesme != null) {
+        final hamSayi =
+            double.tryParse(sayiEslesme.group(1)!.replaceAll(',', '.'));
+        if (hamSayi != null && hamSayi > 0) {
+          deger = hamSayi > 30 ? (hamSayi / 100.0) : hamSayi;
+        }
+      }
+    }
+
+    return deger.clamp(0.4, 2.5);
+  }
+
+  static bool _kelimeIceriyorMu(String metin, List<String> anahtarlar) {
+    for (final kelime in anahtarlar) {
+      if (metin.contains(kelime)) return true;
+    }
+    return false;
+  }
+
+  static _BesinHesapSonucu _besinDegerleriniHesapla({
+    required String kategori,
+    required List<Malzeme> malzemeler,
+    int porsiyon = 2,
+  }) {
+    final porsiyonSayisi = porsiyon <= 0 ? 1 : porsiyon;
+    final kat = kategori.toLowerCase().trim();
+
+    double protein = 14.0;
+    double karb = 30.0;
+    double yag = 11.0;
+
+    if (kat.contains('beef') ||
+        kat.contains('lamb') ||
+        kat.contains('pork') ||
+        kat.contains('dana') ||
+        kat.contains('kuzu') ||
+        kat.contains('et')) {
+      protein = 26.0;
+      karb = 18.0;
+      yag = 17.0;
+    } else if (kat.contains('chicken') ||
+        kat.contains('seafood') ||
+        kat.contains('tavuk') ||
+        kat.contains('deniz') ||
+        kat.contains('balık')) {
+      protein = 25.0;
+      karb = 16.0;
+      yag = 11.0;
+    } else if (kat.contains('pasta') ||
+        kat.contains('rice') ||
+        kat.contains('makarna') ||
+        kat.contains('pilav')) {
+      protein = 12.0;
+      karb = 46.0;
+      yag = 10.0;
+    } else if (kat.contains('dessert') ||
+        kat.contains('baking') ||
+        kat.contains('tatlı')) {
+      protein = 6.0;
+      karb = 52.0;
+      yag = 17.0;
+    } else if (kat.contains('vegetarian') ||
+        kat.contains('vegan') ||
+        kat.contains('vejetaryen') ||
+        kat.contains('vegan')) {
+      protein = 15.0;
+      karb = 32.0;
+      yag = 10.5;
+    } else if (kat.contains('breakfast') || kat.contains('kahvaltı')) {
+      protein = 15.0;
+      karb = 28.0;
+      yag = 12.5;
+    }
+
+    for (final m in malzemeler) {
+      final ad = m.ad.toLowerCase();
+      final miktar = m.miktar.toLowerCase();
+      final katsayi = _miktarKatsayisi(miktar);
+
+      if (_kelimeIceriyorMu(ad, [
+        'chicken',
+        'beef',
+        'steak',
+        'lamb',
+        'pork',
+        'fish',
+        'salmon',
+        'tuna',
+        'shrimp',
+        'prawn',
+        'egg',
+        'tofu',
+        'lentil',
+        'chickpea',
+        'bean',
+        'cheese',
+        'yogurt',
+        'milk',
+        'tavuk',
+        'et',
+        'kıyma',
+        'balık',
+        'somon',
+        'yumurta',
+        'peynir',
+        'yoğurt',
+        'süt',
+        'mercimek',
+        'nohut',
+      ])) {
+        protein += 5.0 * katsayi;
+        yag += 1.4 * katsayi;
+      }
+
+      if (_kelimeIceriyorMu(ad, [
+        'rice',
+        'pasta',
+        'spaghetti',
+        'noodle',
+        'flour',
+        'bread',
+        'potato',
+        'sugar',
+        'honey',
+        'corn',
+        'oat',
+        'pirinç',
+        'makarna',
+        'un',
+        'ekmek',
+        'patates',
+        'şeker',
+        'bal',
+        'mısır',
+        'yulaf',
+      ])) {
+        karb += 6.5 * katsayi;
+      }
+
+      if (_kelimeIceriyorMu(ad, [
+        'oil',
+        'olive oil',
+        'butter',
+        'ghee',
+        'cream',
+        'mayo',
+        'walnut',
+        'almond',
+        'hazelnut',
+        'peanut',
+        'avocado',
+        'yağ',
+        'zeytinyağı',
+        'tereyağı',
+        'krema',
+        'ceviz',
+        'fındık',
+        'badem',
+        'avokado',
+      ])) {
+        yag += 4.5 * katsayi;
+      }
+    }
+
+    final pProtein = (protein / porsiyonSayisi).clamp(3.0, 75.0);
+    final pKarb = (karb / porsiyonSayisi).clamp(5.0, 120.0);
+    final pYag = (yag / porsiyonSayisi).clamp(2.0, 65.0);
+
+    final kalori = ((pProtein * 4) + (pKarb * 4) + (pYag * 9))
+        .round()
+        .clamp(90, 1400);
+
+    return _BesinHesapSonucu(
+      kalori: kalori,
+      protein: double.parse(pProtein.toStringAsFixed(1)),
+      karbonhidrat: double.parse(pKarb.toStringAsFixed(1)),
+      yag: double.parse(pYag.toStringAsFixed(1)),
+    );
   }
 
   Future<List<Tarif>> tumTarifleriGetir({bool zorlaYenile = false}) async {
@@ -369,10 +578,13 @@ class TarifApiServisi {
 
     final pisirilis = _pisirilisBelirle(hamKategori, rawTalimat, etiketler);
     final sayi = malzemeler.isEmpty ? 4 : malzemeler.length;
-    final kalori = (180 + sayi * 40).clamp(200, 900);
-    final protein = double.parse((sayi * 3.2).toStringAsFixed(1));
-    final karb = double.parse((sayi * 5.0).toStringAsFixed(1));
-    final yag = double.parse((sayi * 2.7).toStringAsFixed(1));
+    const porsiyon = 2;
+
+    final makro = _besinDegerleriniHesapla(
+      kategori: kategori,
+      malzemeler: malzemeler,
+      porsiyon: porsiyon,
+    );
 
     return Tarif(
       id: (json['idMeal'] ?? '').toString(),
@@ -380,14 +592,14 @@ class TarifApiServisi {
       kategori: kategori,
       pisirilisSekli: pisirilis,
       sureDk: (15 + sayi * 3).clamp(15, 90),
-      porsiyon: 2,
+      porsiyon: porsiyon,
       gorselUrl: (json['strMealThumb'] ?? '').toString(),
       videoUrl: (json['strYoutube'] ?? '').toString(),
       besinDegerleri: BesinDegerleri(
-        kalori: kalori,
-        protein: protein,
-        karbonhidrat: karb,
-        yag: yag,
+        kalori: makro.kalori,
+        protein: makro.protein,
+        karbonhidrat: makro.karbonhidrat,
+        yag: makro.yag,
       ),
       malzemeler: malzemeler,
       etiketler: etiketler,
