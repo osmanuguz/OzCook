@@ -1,0 +1,86 @@
+import 'package:klasik_lezzetler/models/tarif_model.dart';
+
+final List<Tarif> ornekTarifler = [
+  Tarif(
+    id: '1',
+    baslik: 'Klasik Menemen',
+    kategori: 'Kahvaltılık',
+    sureDk: 15,
+    porsiyon: 2,
+    besinDegerleri: const BesinDegerleri(
+      kalori: 285,
+      protein: 14.5,
+      karbonhidrat: 9.2,
+      yag: 21.0,
+    ),
+    malzemeler: const [
+      Malzeme(ad: 'Domates', miktar: '3 adet orta boy'),
+      Malzeme(ad: 'Yeşil Biber', miktar: '2 adet'),
+      Malzeme(ad: 'Yumurta', miktar: '3 adet'),
+      Malzeme(ad: 'Zeytinyağı', miktar: '2 yemek kaşığı'),
+      Malzeme(ad: 'Tuz & Karabiber', miktar: '1 çay kaşığı'),
+    ],
+    etiketler: ['domates', 'biber', 'yumurta', 'zeytinyağı'],
+    yapilis: [
+      'Biberlerin çekirdeklerini temizleyip ince ince doğrayın.',
+      'Tavaya zeytinyağını alıp biberleri orta ateşte 3-4 dakika kavurun.',
+      'Kabukları soyulmuş ve küp doğranmış domatesleri ekleyip kapağını kapatın.',
+      'Domatesler suyunu salıp hafifçe çekince yumurtaları kırın ve karıştırın.',
+      'Tuz ve baharatları ekleyip sıcak servis edin.',
+    ],
+  ),
+  Tarif(
+    id: '2',
+    baslik: 'Ferah Çoban Salata',
+    kategori: 'Salata',
+    sureDk: 10,
+    porsiyon: 2,
+    besinDegerleri: const BesinDegerleri(
+      kalori: 145,
+      protein: 2.4,
+      karbonhidrat: 11.0,
+      yag: 10.5,
+    ),
+    malzemeler: const [
+      Malzeme(ad: 'Domates', miktar: '2 adet'),
+      Malzeme(ad: 'Salatalık', miktar: '2 adet'),
+      Malzeme(ad: 'Kuru Soğan', miktar: '1 adet küçük'),
+      Malzeme(ad: 'Yeşil Biber', miktar: '1 adet'),
+      Malzeme(ad: 'Zeytinyağı & Limon', miktar: '1 yemek kaşığı'),
+    ],
+    etiketler: ['domates', 'salatalık', 'soğan', 'biber', 'limon'],
+    yapilis: [
+      'Domates ve salatalıkları eşit büyüklükte küp küp doğrayın.',
+      'Soğanı piyazlık doğrayıp tuzla hafifçe ovun ve yıkayın.',
+      'İnce doğranmış biber ve maydanozu derin bir kasede birleştirin.',
+      'Zeytinyağı, taze sıkılmış limon suyu ve tuzu ekleyip harmanlayın.',
+    ],
+  ),
+  Tarif(
+    id: '3',
+    baslik: 'Anne Köftesi & Piyaz',
+    kategori: 'Ana Yemek',
+    sureDk: 35,
+    porsiyon: 4,
+    besinDegerleri: const BesinDegerleri(
+      kalori: 520,
+      protein: 34.0,
+      karbonhidrat: 24.5,
+      yag: 31.0,
+    ),
+    malzemeler: const [
+      Malzeme(ad: 'Dana Kıyma', miktar: '500 gr'),
+      Malzeme(ad: 'Kuru Soğan', miktar: '1 adet rendelenmiş'),
+      Malzeme(ad: 'Galeta Unu', miktar: '3 yemek kaşığı'),
+      Malzeme(ad: 'Yumurta', miktar: '1 adet'),
+      Malzeme(ad: 'Kimyon & Karabiber', miktar: '1 tatlı kaşığı'),
+    ],
+    etiketler: ['kıyma', 'soğan', 'yumurta', 'galeta unu'],
+    yapilis: [
+      'Derin bir kapta kıyma, rendelenmiş soğan, yumurta, galeta unu ve baharatları en az 10 dakika yoğurun.',
+      'Harçtan ceviz büyüklüğünde parçalar koparıp yassı şekil verin.',
+      'Buzdolabında 20 dakika dinlendirin.',
+      'Az yağlanmış döküm tavada veya ızgarada her iki yüzünü kızartın.',
+    ],
+  ),
+];
