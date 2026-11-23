@@ -1,6 +1,7 @@
-import 'package:flutter/material.dart';
+﻿import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
+import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
+import 'package:klasik_lezzetler/data/turkce_cevirici.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/theme/app_theme.dart';
@@ -21,7 +22,6 @@ class TarifDetayEkrani extends StatefulWidget {
 
 class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
   final VeritabaniServisi _vtServisi = VeritabaniServisi();
-  final TarifApiServisi _apiServisi = TarifApiServisi();
   YoutubePlayerController? _youtubeController;
   String? _videoId;
   bool _videoHataliMi = false;
@@ -29,30 +29,77 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
   bool _cevriliyor = false;
   late bool _indirildiMi;
   late Tarif _aktifTarif;
+  late Tarif _hamKaynakTarif;
 
   @override
   void initState() {
     super.initState();
-    _aktifTarif = widget.tarif;
+    _hamKaynakTarif = widget.tarif;
+    _aktifTarif = _yerelOnCeviriUygula(widget.tarif);
     _indirildiMi = _aktifTarif.indirildiMi;
     _videoHazirla();
     _indirmeDurumunuKontrolEt();
-    _tarifiCevir();
+    _tarifiHizliCevir();
   }
 
-  Future<void> _tarifiCevir() async {
+  Tarif _yerelOnCeviriUygula(Tarif kaynak) {
+    final cevrilenMalzemeler = kaynak.malzemeler
+        .map(
+          (m) => Malzeme(
+            ad: TurkceCevirici.malzemeCevir(m.ad),
+            miktar: TurkceCevirici.miktarCevir(m.miktar),
+          ),
+        )
+        .toList();
+
+    return Tarif(
+      id: kaynak.id,
+      baslik: TurkceCevirici.yemekAdiCevir(kaynak.baslik),
+      kategori: TurkceCevirici.kategoriCevir(kaynak.kategori),
+      pisirilisSekli: kaynak.pisirilisSekli,
+      sureDk: kaynak.sureDk,
+      porsiyon: kaynak.porsiyon,
+      gorselUrl: kaynak.gorselUrl,
+      videoUrl: kaynak.videoUrl,
+      besinDegerleri: kaynak.besinDegerleri,
+      malzemeler: cevrilenMalzemeler,
+      etiketler: kaynak.etiketler,
+      yapilis: List<String>.from(kaynak.yapilis),
+      indirildiMi: kaynak.indirildiMi,
+    );
+  }
+
+  Future<void> _tarifiHizliCevir() async {
     if (_cevriliyor) return;
     setState(() => _cevriliyor = true);
 
     try {
-      final cevrilen = await _apiServisi.tarifiTurkceyeCevir(_aktifTarif);
+      final String trBaslik =
+          await CeviriServisi.yemekAdiCevir(_hamKaynakTarif.baslik);
+      final List<String> trAdimlar =
+          await CeviriServisi.adimlariHizliCevir(_hamKaynakTarif.yapilis);
+
       if (!mounted) return;
-      cevrilen.indirildiMi = _indirildiMi;
+      final temizBaslik = trBaslik.trim();
+
       setState(() {
-        _aktifTarif = cevrilen;
+        _aktifTarif = Tarif(
+          id: _aktifTarif.id,
+          baslik: temizBaslik.isNotEmpty ? temizBaslik : _aktifTarif.baslik,
+          kategori: _aktifTarif.kategori,
+          pisirilisSekli: _aktifTarif.pisirilisSekli,
+          sureDk: _aktifTarif.sureDk,
+          porsiyon: _aktifTarif.porsiyon,
+          gorselUrl: _aktifTarif.gorselUrl,
+          videoUrl: _aktifTarif.videoUrl,
+          besinDegerleri: _aktifTarif.besinDegerleri,
+          malzemeler: _aktifTarif.malzemeler,
+          etiketler: _aktifTarif.etiketler,
+          yapilis: trAdimlar.isNotEmpty ? trAdimlar : _aktifTarif.yapilis,
+          indirildiMi: _indirildiMi,
+        );
       });
     } catch (_) {
-      // Çeviri servisine erişilemezse mevcut tarif metni korunur.
     } finally {
       if (mounted) {
         setState(() => _cevriliyor = false);
@@ -531,8 +578,8 @@ class _TarifDetayEkraniState extends State<TarifDetayEkrani> {
                           ),
                         )
                         .toList(),
+                  ),
                 ),
-              ),
               const SizedBox(height: 20),
               Text(
                 'Hazırlanışı',

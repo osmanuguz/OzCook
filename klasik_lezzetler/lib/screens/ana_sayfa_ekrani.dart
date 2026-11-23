@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
+import 'package:klasik_lezzetler/data/turkce_cevirici.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/screens/tarif_detay_ekrani.dart';
@@ -40,10 +41,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   String _seciliCesit = 'Tümü';
   String _aramaMetni = '';
   bool _yukleniyor = true;
-  bool _basliklarCevriliyor = false;
-  int _ceviriOturumId = 0;
   String? _hata;
   Timer? _aramaDebounce;
+  bool _baslikCevirisiBasladi = false;
 
   @override
   void initState() {
@@ -53,14 +53,45 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
 
   @override
   void dispose() {
-    _ceviriOturumId++;
     _aramaDebounce?.cancel();
     _aramaController.dispose();
     super.dispose();
   }
 
   String _gosterilecekBaslik(Tarif tarif) {
-    return _cevrilenBasliklar[tarif.id] ?? tarif.baslik;
+    final onbellekli = _cevrilenBasliklar[tarif.id];
+    if (onbellekli != null && onbellekli.trim().isNotEmpty) {
+      return onbellekli;
+    }
+    final temiz = tarif.baslik.trim();
+    if (temiz.isEmpty) return temiz;
+    return TurkceCevirici.yemekAdiCevir(temiz);
+  }
+
+  Future<void> _basliklariArkaPlandaCevir(List<Tarif> liste) async {
+    if (_baslikCevirisiBasladi || liste.isEmpty) return;
+    _baslikCevirisiBasladi = true;
+
+    // İlk 24 tarifi kasmadan 4'lü gruplar halinde çevir
+    final hedefler = liste.take(24).toList();
+    for (int i = 0; i < hedefler.length; i += 4) {
+      if (!mounted) return;
+      final grup = hedefler.skip(i).take(4).toList();
+      await Future.wait(
+        grup.map((tarif) async {
+          final ham = tarif.baslik.trim();
+          if (ham.isEmpty || _cevrilenBasliklar.containsKey(tarif.id)) return;
+          try {
+            final ceviri = await CeviriServisi.yemekAdiCevir(ham);
+            if (ceviri.trim().isNotEmpty) {
+              _cevrilenBasliklar[tarif.id] = ceviri.trim();
+            }
+          } catch (_) {}
+        }),
+      );
+      if (!mounted) return;
+      setState(() {});
+    }
   }
 
   void _aramaDegisti(String val) {
@@ -72,11 +103,10 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   }
 
   Future<void> _verileriYukle() async {
-    final oturumId = ++_ceviriOturumId;
     setState(() {
       _yukleniyor = true;
-      _basliklarCevriliyor = false;
       _hata = null;
+      _baslikCevirisiBasladi = false;
     });
 
     try {
@@ -86,69 +116,19 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
         t.indirildiMi = indirilenIdler.contains(t.id);
       }
 
-      if (!mounted || oturumId != _ceviriOturumId) return;
+      if (!mounted) return;
       setState(() {
         _tumTarifler = liste;
         _yukleniyor = false;
       });
 
-      unawaited(_basliklariArkaPlandaCevir(liste, oturumId));
+      unawaited(_basliklariArkaPlandaCevir(liste));
     } catch (_) {
-      if (!mounted || oturumId != _ceviriOturumId) return;
+      if (!mounted) return;
       setState(() {
         _hata = 'Tarifler yüklenemedi. İnternet bağlantını kontrol et.';
         _yukleniyor = false;
       });
-    }
-  }
-
-  Future<void> _basliklariArkaPlandaCevir(
-    List<Tarif> tarifler,
-    int oturumId,
-  ) async {
-    final cevrilecekler = tarifler
-        .where(
-          (t) =>
-              t.id.isNotEmpty &&
-              t.baslik.trim().isNotEmpty &&
-              !_cevrilenBasliklar.containsKey(t.id),
-        )
-        .toList();
-
-    if (cevrilecekler.isEmpty || !mounted || oturumId != _ceviriOturumId) {
-      return;
-    }
-
-    setState(() => _basliklarCevriliyor = true);
-
-    const grupBoyutu = 6;
-    for (int i = 0; i < cevrilecekler.length; i += grupBoyutu) {
-      if (!mounted || oturumId != _ceviriOturumId) return;
-
-      final grup = cevrilecekler.skip(i).take(grupBoyutu).toList();
-      final yeniEslesmeler = <String, String>{};
-
-      await Future.wait(
-        grup.map((tarif) async {
-          try {
-            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik);
-            if (ceviri.trim().isNotEmpty) {
-              yeniEslesmeler[tarif.id] = ceviri.trim();
-            }
-          } catch (_) {}
-        }),
-      );
-
-      if (!mounted || oturumId != _ceviriOturumId) return;
-      if (yeniEslesmeler.isNotEmpty) {
-        setState(() {
-          _cevrilenBasliklar.addAll(yeniEslesmeler);
-        });
-      }
-    }
-
-    if (mounted && oturumId == _ceviriOturumId) {
-      setState(() => _basliklarCevriliyor = false);
     }
   }
 
@@ -235,10 +215,9 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
   }
 
   Future<void> _detayaGit(Tarif tarif) async {
-    final gosterilen = _gosterilecekBaslik(tarif);
     final detayTarifi = Tarif(
       id: tarif.id,
-      baslik: gosterilen,
+      baslik: _gosterilecekBaslik(tarif),
       kategori: tarif.kategori,
       pisirilisSekli: tarif.pisirilisSekli,
       sureDk: tarif.sureDk,
@@ -349,13 +328,6 @@ class _AnaSayfaEkraniState extends State<AnaSayfaEkrani> {
           padding: const EdgeInsets.all(16),
           sliver: SliverList(
             delegate: SliverChildListDelegate([
-              if (_basliklarCevriliyor) ...[
-                const LinearProgressIndicator(
-                  color: AppTheme.klasikKirmizi,
-                  minHeight: 2.5,
-                ),
-                const SizedBox(height: 10),
-              ],
               Text(
                 'Günün Menüsü',
                 style: Theme.of(context).textTheme.headlineMedium,

@@ -545,35 +545,68 @@ class TarifApiServisi {
   }
 
   Future<Tarif> tarifiTurkceyeCevir(Tarif tarif) async {
-    final cevrilenBaslik = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+    final yerelBaslik = TurkceCevirici.yemekAdiCevir(tarif.baslik);
+    final yerelMalzemeler = tarif.malzemeler
+        .map(
+          (m) => Malzeme(
+            ad: TurkceCevirici.malzemeCevir(m.ad),
+            miktar: TurkceCevirici.miktarCevir(m.miktar),
+          ),
+        )
+        .toList();
 
-    final cevrilenMalzemeler = await Future.wait(
-      tarif.malzemeler.map((m) async {
-        final cevrilenAd = await CeviriServisi.malzemeCevir(m.ad);
-        return Malzeme(
-          ad: cevrilenAd,
-          miktar: TurkceCevirici.miktarCevir(m.miktar),
+    String sonBaslik = yerelBaslik;
+    try {
+      final ceviriBaslik = await CeviriServisi.yemekAdiCevir(tarif.baslik);
+      if (ceviriBaslik.trim().isNotEmpty) {
+        sonBaslik = ceviriBaslik.trim();
+      }
+    } catch (_) {}
+
+    List<Malzeme> sonMalzemeler = yerelMalzemeler;
+    try {
+      if (tarif.malzemeler.isNotEmpty) {
+        final cevrilenAdlar = await Future.wait(
+          tarif.malzemeler.take(12).map((m) => CeviriServisi.malzemeCevir(m.ad)),
         );
-      }),
-    );
+        if (cevrilenAdlar.length == tarif.malzemeler.length) {
+          sonMalzemeler = List.generate(tarif.malzemeler.length, (i) {
+            final trAd = cevrilenAdlar[i].trim();
+            return Malzeme(
+              ad: trAd.isNotEmpty ? trAd : yerelMalzemeler[i].ad,
+              miktar: yerelMalzemeler[i].miktar,
+            );
+          });
+        }
+      }
+    } catch (_) {}
 
-    final cevrilenYapilis = await Future.wait(
-      tarif.yapilis.map((adim) => CeviriServisi.adimCevir(adim)),
-    );
+    List<String> sonYapilis = List<String>.from(tarif.yapilis);
+    try {
+      if (tarif.yapilis.isNotEmpty) {
+        final cevrilenAdimlar = await Future.wait(
+          tarif.yapilis.map((adim) => CeviriServisi.adimCevir(adim)),
+        );
+        if (cevrilenAdimlar.length == tarif.yapilis.length) {
+          sonYapilis = cevrilenAdimlar;
+        }
+      }
+    } catch (_) {}
 
     return Tarif(
       id: tarif.id,
-      baslik: cevrilenBaslik,
-      kategori: tarif.kategori,
+      baslik: sonBaslik,
+      kategori: TurkceCevirici.kategoriCevir(tarif.kategori),
       pisirilisSekli: tarif.pisirilisSekli,
       sureDk: tarif.sureDk,
       porsiyon: tarif.porsiyon,
       gorselUrl: tarif.gorselUrl,
       videoUrl: tarif.videoUrl,
       besinDegerleri: tarif.besinDegerleri,
-      malzemeler: cevrilenMalzemeler,
+      malzemeler: sonMalzemeler,
       etiketler: tarif.etiketler,
-      yapilis: cevrilenYapilis,
+      yapilis: sonYapilis,
+      indirildiMi: tarif.indirildiMi,
     );
   }
 
@@ -609,7 +642,6 @@ class TarifApiServisi {
         .split(RegExp(r'\r?\n|\.\s+'))
         .map((e) => e.trim())
         .where((e) => e.length > 3)
-        .map(TurkceCevirici.yapilisAdimiCevir)
         .toList();
 
     final pisirilis = _pisirilisBelirle(hamKategori, rawTalimat, etiketler);

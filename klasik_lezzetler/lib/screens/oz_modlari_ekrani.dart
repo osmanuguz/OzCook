@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:klasik_lezzetler/data/ceviri_servisi.dart';
 import 'package:klasik_lezzetler/data/tarif_api_servisi.dart';
+import 'package:klasik_lezzetler/data/turkce_cevirici.dart';
 import 'package:klasik_lezzetler/data/veritabani_servisi.dart';
 import 'package:klasik_lezzetler/models/tarif_model.dart';
 import 'package:klasik_lezzetler/screens/kalori_ve_ozday_ekrani.dart';
@@ -37,9 +38,8 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
 
   List<Tarif> _tumTarifler = [];
   final Map<String, String> _cevrilenBasliklar = {};
+  final Set<String> _cevrilenModAnahtarlari = {};
   bool _yukleniyor = true;
-  bool _basliklarCevriliyor = false;
-  int _ceviriOturumId = 0;
 
   String? _aktifMod;
   String _ozFitModu = 'Diyet';
@@ -70,7 +70,6 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
 
   @override
   void dispose() {
-    _ceviriOturumId++;
     _diyetZamanlayici?.cancel();
     _diyetKaloriController.dispose();
     _kiloAlmaKaloriController.dispose();
@@ -78,7 +77,64 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   }
 
   String _gosterilecekBaslik(Tarif tarif) {
-    return _cevrilenBasliklar[tarif.id] ?? tarif.baslik;
+    final onbellekli = _cevrilenBasliklar[tarif.id];
+    if (onbellekli != null && onbellekli.trim().isNotEmpty) {
+      return onbellekli;
+    }
+    final temiz = tarif.baslik.trim();
+    if (temiz.isEmpty) return temiz;
+    return TurkceCevirici.yemekAdiCevir(temiz);
+  }
+
+  Future<void> _basliklariKasmadanCevir(
+    String anahtar,
+    List<Tarif> tarifler,
+  ) async {
+    if (tarifler.isEmpty || _cevrilenModAnahtarlari.contains(anahtar)) return;
+    _cevrilenModAnahtarlari.add(anahtar);
+
+    final hedefler = tarifler
+        .where((t) {
+          final ham = t.baslik.trim();
+          if (ham.isEmpty || _cevrilenBasliklar.containsKey(t.id)) return false;
+          // Yerel sözlük zaten çevirdiyse dış isteğe gerek kalmasın
+          return TurkceCevirici.yemekAdiCevir(ham) == ham;
+        })
+        .take(10)
+        .toList();
+
+    if (hedefler.isEmpty) return;
+
+    bool degisti = false;
+    for (int i = 0; i < hedefler.length; i += 5) {
+      if (!mounted) return;
+      final grup = hedefler.skip(i).take(5).toList();
+      await Future.wait(
+        grup.map((tarif) async {
+          try {
+            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik.trim());
+            if (ceviri.trim().isNotEmpty && ceviri.trim() != tarif.baslik.trim()) {
+              _cevrilenBasliklar[tarif.id] = ceviri.trim();
+              degisti = true;
+            }
+          } catch (_) {}
+        }),
+      );
+    }
+
+    if (degisti && mounted) {
+      setState(() {});
+    }
+  }
+
+  Color _chipMetinRengi(bool secili, bool koyuTemaMi) {
+    if (secili) return AppTheme.safBeyaz;
+    return koyuTemaMi ? AppTheme.safBeyaz : AppTheme.koyuMetin;
+  }
+
+  Color _chipArkaPlanRengi(bool secili, bool koyuTemaMi) {
+    if (secili) return AppTheme.klasikKirmizi;
+    return koyuTemaMi ? AppTheme.koyuKirmiziYuzey : AppTheme.acikKirmiziYuzey;
   }
 
   Widget _tarifKucukGorseli(String gorselUrl, {double boyut = 58}) {
@@ -90,12 +146,15 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
       );
     }
 
+    final cachePx = (boyut * 2).round();
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: Image.network(
         gorselUrl,
         width: boyut,
         height: boyut,
+        cacheWidth: cachePx,
+        cacheHeight: cachePx,
         fit: BoxFit.cover,
         errorBuilder: (_, _err, _stack) => Icon(
           Icons.restaurant,
@@ -180,79 +239,53 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
   }
 
   Future<void> _verileriYukle() async {
-    final oturumId = ++_ceviriOturumId;
-    final liste = await _apiServisi.tumTarifleriGetir();
-    final gunler = await _vtServisi.ozFitTumGunleriGetir();
-    if (!mounted || oturumId != _ceviriOturumId) return;
+    try {
+      final liste = await _apiServisi.tumTarifleriGetir();
+      final gunler = await _vtServisi.ozFitTumGunleriGetir();
+      if (!mounted) return;
 
-    final setGunler = <int>{..._gunListesi, ...gunler.keys}.toList()..sort();
+      final setGunler = <int>{..._gunListesi, ...gunler.keys}.toList()..sort();
 
-    setState(() {
-      _tumTarifler = liste;
-      _kayitliGunler = gunler;
-      _gunListesi = setGunler;
-      _yukleniyor = false;
-    });
+      setState(() {
+        _tumTarifler = liste;
+        _kayitliGunler = gunler;
+        _gunListesi = setGunler;
+        _yukleniyor = false;
+      });
 
-    _gunVerisiniUygula(_aktifGun);
-    unawaited(_basliklariArkaPlandaCevir(liste, oturumId));
+      _gunVerisiniUygula(_aktifGun);
+      if (_aktifMod != null) {
+        unawaited(_aktifModBasliklariniCevir(_aktifMod!));
+      }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _yukleniyor = false);
+    }
   }
 
-  Future<void> _basliklariArkaPlandaCevir(
-    List<Tarif> tarifler,
-    int oturumId,
-  ) async {
-    final cevrilecekler = tarifler
-        .where(
-          (t) =>
-              t.id.isNotEmpty &&
-              t.baslik.trim().isNotEmpty &&
-              !_cevrilenBasliklar.containsKey(t.id),
-        )
-        .toList();
-
-    if (cevrilecekler.isEmpty || !mounted || oturumId != _ceviriOturumId) {
-      return;
-    }
-
-    setState(() => _basliklarCevriliyor = true);
-
-    const grupBoyutu = 6;
-    for (int i = 0; i < cevrilecekler.length; i += grupBoyutu) {
-      if (!mounted || oturumId != _ceviriOturumId) return;
-
-      final grup = cevrilecekler.skip(i).take(grupBoyutu).toList();
-      final yeniEslesmeler = <String, String>{};
-
-      await Future.wait(
-        grup.map((tarif) async {
-          try {
-            final ceviri = await CeviriServisi.yemekAdiCevir(tarif.baslik);
-            if (ceviri.trim().isNotEmpty) {
-              yeniEslesmeler[tarif.id] = ceviri.trim();
-            }
-          } catch (_) {}
-        }),
+  Future<void> _aktifModBasliklariniCevir(String mod) async {
+    if (_tumTarifler.isEmpty) return;
+    if (mod == 'OzFit') {
+      final gruplar = _ozFitKaloriOnerileri();
+      final tarifler = gruplar.expand((g) => g).toList();
+      await _basliklariKasmadanCevir(
+        'OzFit:$_ozFitModu:$_aktifHedefKalori',
+        tarifler,
       );
-
-      if (!mounted || oturumId != _ceviriOturumId) return;
-      if (yeniEslesmeler.isNotEmpty) {
-        setState(() {
-          _cevrilenBasliklar.addAll(yeniEslesmeler);
-        });
-      }
-    }
-
-    if (mounted && oturumId == _ceviriOturumId) {
-      setState(() => _basliklarCevriliyor = false);
+    } else if (mod == 'OzHealth') {
+      await _basliklariKasmadanCevir(
+        'OzHealth:$_ozHealthFiltre',
+        _ozHealthTarifleri(),
+      );
+    } else if (mod == 'KYK Yurt') {
+      await _basliklariKasmadanCevir('KYK Yurt', _kykYurtTarifleri());
     }
   }
 
   Future<void> _tarifDetayinaGit(Tarif tarif) async {
-    final gosterilenBaslik = _gosterilecekBaslik(tarif);
     final detayTarifi = Tarif(
       id: tarif.id,
-      baslik: gosterilenBaslik,
+      baslik: _gosterilecekBaslik(tarif),
       kategori: tarif.kategori,
       pisirilisSekli: tarif.pisirilisSekli,
       sureDk: tarif.sureDk,
@@ -343,21 +376,23 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
         _kiloAlmaHedefKalori = deger;
       }
     });
+    unawaited(_aktifModBasliklariniCevir('OzFit'));
   }
 
   List<List<Tarif>> _ozFitKaloriOnerileri() {
     if (_tumTarifler.isEmpty) return [];
     final hedef = _aktifHedefKalori;
 
-    final List<List<Tarif>> adaylar = [];
+    final adaylar = <List<Tarif>>[];
+    final sinirliListe = _tumTarifler.take(40).toList();
 
-    for (final t in _tumTarifler) {
+    for (final t in sinirliListe) {
       adaylar.add([t]);
     }
 
-    for (int i = 0; i < _tumTarifler.length; i++) {
-      for (int j = i + 1; j < _tumTarifler.length; j++) {
-        adaylar.add([_tumTarifler[i], _tumTarifler[j]]);
+    for (int i = 0; i < sinirliListe.length && i < 18; i++) {
+      for (int j = i + 1; j < sinirliListe.length && j < 18; j++) {
+        adaylar.add([sinirliListe[i], sinirliListe[j]]);
       }
     }
 
@@ -464,7 +499,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
       }
 
       return hafifMi;
-    }).toList();
+    }).take(30).toList();
   }
 
   List<Tarif> _kykYurtTarifleri() {
@@ -479,9 +514,9 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
           metin.contains('salata') ||
           metin.contains('yumurta');
       return kisaSure || yurtUygun;
-    }).toList();
+    }).take(30).toList();
 
-    return pratikListe.isNotEmpty ? pratikListe : _tumTarifler;
+    return pratikListe.isNotEmpty ? pratikListe : _tumTarifler.take(30).toList();
   }
 
   Widget _tarifListeKarti(Tarif tarif) {
@@ -593,8 +628,15 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
     );
   }
 
+  void _modSec(String mod) {
+    setState(() => _aktifMod = mod);
+    unawaited(_aktifModBasliklariniCevir(mod));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final koyuTemaMi = Theme.of(context).brightness == Brightness.dark;
+
     if (_yukleniyor) {
       return const Center(
         child: CircularProgressIndicator(color: AppTheme.klasikKirmizi),
@@ -626,7 +668,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 AppTheme.klasikKirmizi,
                 Color(0xFF7A1419),
               ],
-              onTap: () => setState(() => _aktifMod = 'Kalori & OzDay'),
+              onTap: () => _modSec('Kalori & OzDay'),
             ),
             _kapakKarti(
               baslik: 'OzFit',
@@ -638,7 +680,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 Color(0xFFB71C1C),
                 Color(0xFF5A1014),
               ],
-              onTap: () => setState(() => _aktifMod = 'OzFit'),
+              onTap: () => _modSec('OzFit'),
             ),
             _kapakKarti(
               baslik: 'OzHealth',
@@ -650,7 +692,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 Color(0xFFC62828),
                 Color(0xFF4A0E12),
               ],
-              onTap: () => setState(() => _aktifMod = 'OzHealth'),
+              onTap: () => _modSec('OzHealth'),
             ),
             _kapakKarti(
               baslik: 'KYK Yurt',
@@ -662,7 +704,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 Color(0xFFD32F2F),
                 Color(0xFF6D1B1B),
               ],
-              onTap: () => setState(() => _aktifMod = 'KYK Yurt'),
+              onTap: () => _modSec('KYK Yurt'),
             ),
           ],
         ),
@@ -680,19 +722,21 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (_basliklarCevriliyor) ...[
-            const LinearProgressIndicator(
-              color: AppTheme.klasikKirmizi,
-              minHeight: 2.5,
-            ),
-            const SizedBox(height: 10),
-          ],
           Row(
             children: [
               OutlinedButton.icon(
                 onPressed: () => setState(() => _aktifMod = null),
                 icon: const Icon(Icons.grid_view_rounded),
                 label: const Text('Kapaklar'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor:
+                      koyuTemaMi ? AppTheme.safBeyaz : AppTheme.koyuMetin,
+                  side: BorderSide(
+                    color: koyuTemaMi
+                        ? AppTheme.safBeyaz.withValues(alpha: 0.35)
+                        : AppTheme.klasikKirmizi.withValues(alpha: 0.4),
+                  ),
+                ),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -712,12 +756,13 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                           label: Text(bolum),
                           selected: secili,
                           selectedColor: AppTheme.klasikKirmizi,
+                          backgroundColor:
+                              _chipArkaPlanRengi(secili, koyuTemaMi),
                           labelStyle: TextStyle(
-                            color:
-                                secili ? AppTheme.safBeyaz : AppTheme.koyuMetin,
+                            color: _chipMetinRengi(secili, koyuTemaMi),
                             fontWeight: FontWeight.w700,
                           ),
-                          onSelected: (_) => setState(() => _aktifMod = bolum),
+                          onSelected: (_) => _modSec(bolum),
                         ),
                       );
                     }).toList(),
@@ -728,7 +773,7 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
           ),
           const SizedBox(height: 16),
           if (_aktifMod == 'Kalori & OzDay') ...[
-            const KaloriVeOzDayEkrani(),
+            const KaloriVeOzDayEkrani(icIceScroll: true),
           ] else if (_aktifMod == 'OzFit') ...[
             Text(
               'OzFit • Hedef Kalori, Zamanlama & Takvim',
@@ -745,11 +790,15 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                       label: Text(mod, textAlign: TextAlign.center),
                       selected: secili,
                       selectedColor: AppTheme.klasikKirmizi,
+                      backgroundColor: _chipArkaPlanRengi(secili, koyuTemaMi),
                       labelStyle: TextStyle(
-                        color: secili ? AppTheme.safBeyaz : AppTheme.koyuMetin,
+                        color: _chipMetinRengi(secili, koyuTemaMi),
                         fontWeight: FontWeight.w700,
                       ),
-                      onSelected: (_) => setState(() => _ozFitModu = mod),
+                      onSelected: (_) {
+                        setState(() => _ozFitModu = mod);
+                        unawaited(_aktifModBasliklariniCevir('OzFit'));
+                      },
                     ),
                   ),
                 );
@@ -840,9 +889,11 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                     const SizedBox(height: 8),
                     Text(
                       'Kayıtlı Diyet Hedefi: $_diyetHedefKalori kcal  •  Kilo Alma Hedefi: $_kiloAlmaHedefKalori kcal',
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
-                        color: AppTheme.ikincilMetin,
+                        color: koyuTemaMi
+                            ? AppTheme.safBeyaz.withValues(alpha: 0.72)
+                            : AppTheme.ikincilMetin,
                       ),
                     ),
                   ],
@@ -879,8 +930,9 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                       label: Text('Gün $gunNo${kayitliMi ? ' ✓' : ''}'),
                       selected: secili,
                       selectedColor: AppTheme.klasikKirmizi,
+                      backgroundColor: _chipArkaPlanRengi(secili, koyuTemaMi),
                       labelStyle: TextStyle(
-                        color: secili ? AppTheme.safBeyaz : AppTheme.koyuMetin,
+                        color: _chipMetinRengi(secili, koyuTemaMi),
                         fontWeight: FontWeight.w600,
                       ),
                       onSelected: (_) => _gunVerisiniUygula(gunNo),
@@ -895,14 +947,14 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                 width: double.infinity,
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: AppTheme.klasikKirmizi.withValues(alpha: 0.08),
+                  color: AppTheme.klasikKirmizi.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: Text(
                   'Gün $_aktifGun Seçili Plan: $_seciliOneriMetni',
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontWeight: FontWeight.w600,
-                    color: AppTheme.klasikKirmizi,
+                    color: koyuTemaMi ? AppTheme.safBeyaz : AppTheme.klasikKirmizi,
                     fontSize: 13,
                   ),
                 ),
@@ -959,6 +1011,11 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                             onPressed: _mevcutGunuKaydet,
                             icon: const Icon(Icons.save_rounded),
                             label: Text('Gün $_aktifGun Kaydet'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: koyuTemaMi
+                                  ? AppTheme.safBeyaz
+                                  : AppTheme.koyuMetin,
+                            ),
                           ),
                         ),
                         const SizedBox(width: 8),
@@ -1046,11 +1103,15 @@ class _OzModlariEkraniState extends State<OzModlariEkrani> {
                       label: Text(filtre),
                       selected: secili,
                       selectedColor: AppTheme.klasikKirmizi,
+                      backgroundColor: _chipArkaPlanRengi(secili, koyuTemaMi),
                       labelStyle: TextStyle(
-                        color: secili ? AppTheme.safBeyaz : AppTheme.koyuMetin,
+                        color: _chipMetinRengi(secili, koyuTemaMi),
                         fontWeight: FontWeight.w600,
                       ),
-                      onSelected: (_) => setState(() => _ozHealthFiltre = filtre),
+                      onSelected: (_) {
+                        setState(() => _ozHealthFiltre = filtre);
+                        unawaited(_aktifModBasliklariniCevir('OzHealth'));
+                      },
                     ),
                   );
                 }).toList(),
