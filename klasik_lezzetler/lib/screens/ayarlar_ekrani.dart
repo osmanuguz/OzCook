@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:klasik_lezzetler/data/google_saglik_servisi.dart';
 import 'package:klasik_lezzetler/screens/giris_ekrani.dart';
 import 'package:klasik_lezzetler/screens/kaydedilenler_ve_indirilenler_ekrani.dart';
 import 'package:klasik_lezzetler/theme/app_theme.dart';
@@ -27,8 +28,151 @@ class AyarlarEkrani extends StatefulWidget {
 
 class _AyarlarEkraniState extends State<AyarlarEkrani> {
   bool _appleHealthBagli = false;
-  bool _googleSaglikBagli = false;
   bool _bildirimlerAcik = true;
+  bool _saglikIslemiSuruyor = false;
+
+  final Map<OzSaglikModu, bool> _googleModDurumlari = {
+    OzSaglikModu.ozDay: false,
+    OzSaglikModu.ozFit: false,
+    OzSaglikModu.ozHealth: false,
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _mevcutSaglikIzinleriniKontrolEt();
+  }
+
+  Future<void> _mevcutSaglikIzinleriniKontrolEt() async {
+    final servis = GoogleSaglikServisi.instance;
+    final uygun = await servis.healthConnectKullanilabilirMi();
+    if (!uygun || !mounted) return;
+
+    final ozDay = await servis.modIzniVarMi(OzSaglikModu.ozDay);
+    final ozFit = await servis.modIzniVarMi(OzSaglikModu.ozFit);
+    final ozHealth = await servis.modIzniVarMi(OzSaglikModu.ozHealth);
+
+    if (!mounted) return;
+    setState(() {
+      _googleModDurumlari[OzSaglikModu.ozDay] = ozDay;
+      _googleModDurumlari[OzSaglikModu.ozFit] = ozFit;
+      _googleModDurumlari[OzSaglikModu.ozHealth] = ozHealth;
+    });
+  }
+
+  String _modAdi(OzSaglikModu mod) {
+    switch (mod) {
+      case OzSaglikModu.ozDay:
+        return 'OzDay';
+      case OzSaglikModu.ozFit:
+        return 'OzFit';
+      case OzSaglikModu.ozHealth:
+        return 'OzHealth';
+    }
+  }
+
+  String _modAciklamasi(OzSaglikModu mod, bool bagli) {
+    switch (mod) {
+      case OzSaglikModu.ozDay:
+        return bagli
+            ? 'Bağlandı • Su ve beslenme/kalori eşitleniyor'
+            : 'Bağlı değil • Su ve beslenme izni için aç';
+      case OzSaglikModu.ozFit:
+        return bagli
+            ? 'Bağlandı • Adım, aktif kalori ve antrenman eşitleniyor'
+            : 'Bağlı değil • Adım, kalori ve antrenman izni için aç';
+      case OzSaglikModu.ozHealth:
+        return bagli
+            ? 'Bağlandı • Nabız ve uyku verileri okunuyor'
+            : 'Bağlı değil • Nabız ve uyku izni için aç';
+    }
+  }
+
+  IconData _modIkonu(OzSaglikModu mod) {
+    switch (mod) {
+      case OzSaglikModu.ozDay:
+        return Icons.wb_sunny_outlined;
+      case OzSaglikModu.ozFit:
+        return Icons.directions_run_rounded;
+      case OzSaglikModu.ozHealth:
+        return Icons.favorite_border_rounded;
+    }
+  }
+
+  Future<void> _googleModDegistir(OzSaglikModu mod, bool hedefDurum) async {
+    if (_saglikIslemiSuruyor) return;
+
+    if (!hedefDurum) {
+      setState(() => _googleModDurumlari[mod] = false);
+      _durumBildir(
+        '${_modAdi(mod)} bağlantısı kapatıldı. İzinleri Health Connect ayarlarından yönetebilirsin.',
+      );
+      return;
+    }
+
+    setState(() => _saglikIslemiSuruyor = true);
+    final servis = GoogleSaglikServisi.instance;
+    final uygun = await servis.healthConnectKullanilabilirMi();
+
+    if (!uygun) {
+      if (!mounted) return;
+      setState(() => _saglikIslemiSuruyor = false);
+      _durumBildir(
+        'Cihazda Health Connect bulunamadı veya kullanıma hazır değil.',
+      );
+      return;
+    }
+
+    final izinVerildi = await servis.modIzniIste(mod);
+    if (!mounted) return;
+
+    setState(() {
+      _googleModDurumlari[mod] = izinVerildi;
+      _saglikIslemiSuruyor = false;
+    });
+
+    _durumBildir(
+      izinVerildi
+          ? '${_modAdi(mod)} için Google Sağlık bağlantısı aktif.'
+          : '${_modAdi(mod)} için Health Connect izni verilmedi.',
+    );
+  }
+
+  Future<void> _tumGoogleModlariniBagla() async {
+    if (_saglikIslemiSuruyor) return;
+
+    setState(() => _saglikIslemiSuruyor = true);
+    final servis = GoogleSaglikServisi.instance;
+    final uygun = await servis.healthConnectKullanilabilirMi();
+
+    if (!uygun) {
+      if (!mounted) return;
+      setState(() => _saglikIslemiSuruyor = false);
+      _durumBildir(
+        'Cihazda Health Connect bulunamadı veya kullanıma hazır değil.',
+      );
+      return;
+    }
+
+    final tumIzinVerildi = await servis.tumModlarIcinIzinIste();
+    final ozDay = await servis.modIzniVarMi(OzSaglikModu.ozDay);
+    final ozFit = await servis.modIzniVarMi(OzSaglikModu.ozFit);
+    final ozHealth = await servis.modIzniVarMi(OzSaglikModu.ozHealth);
+
+    if (!mounted) return;
+    setState(() {
+      _googleModDurumlari[OzSaglikModu.ozDay] = ozDay;
+      _googleModDurumlari[OzSaglikModu.ozFit] = ozFit;
+      _googleModDurumlari[OzSaglikModu.ozHealth] = ozHealth;
+      _saglikIslemiSuruyor = false;
+    });
+
+    _durumBildir(
+      tumIzinVerildi
+          ? 'OzDay, OzFit ve OzHealth modları Google Sağlık ile bağlandı.'
+          : 'Bazı veya tüm Health Connect mod izinleri tamamlanmadı.',
+    );
+  }
 
   Future<void> _hesapEkleVeyaDuzenle() async {
     await Navigator.push(
@@ -197,6 +341,8 @@ class _AyarlarEkraniState extends State<AyarlarEkrani> {
   @override
   Widget build(BuildContext context) {
     final kullanici = widget.mevcutKullanici;
+    final aktifModSayisi =
+        _googleModDurumlari.values.where((bagli) => bagli).length;
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -329,9 +475,8 @@ class _AyarlarEkraniState extends State<AyarlarEkrani> {
                   },
                 ),
                 const Divider(height: 1),
-                SwitchListTile(
-                  activeThumbColor: AppTheme.klasikKirmizi,
-                  secondary: const Icon(
+                ListTile(
+                  leading: const Icon(
                     Icons.monitor_heart_rounded,
                     color: AppTheme.klasikKirmizi,
                   ),
@@ -340,17 +485,36 @@ class _AyarlarEkraniState extends State<AyarlarEkrani> {
                     style: TextStyle(fontWeight: FontWeight.bold),
                   ),
                   subtitle: Text(
-                    _googleSaglikBagli
-                        ? 'Bağlandı • Google Sağlık verileri eşitleniyor'
-                        : 'Bağlı değil • Health Connect ile eşitle',
+                    '$aktifModSayisi / 3 mod aktif • OzDay, OzFit ve OzHealth',
                   ),
-                  value: _googleSaglikBagli,
-                  onChanged: (deger) {
-                    setState(() => _googleSaglikBagli = deger);
-                    _durumBildir(
-                      deger
-                          ? 'Google Sağlık (Health Connect) bağlantısı aktifleştirildi.'
-                          : 'Google Sağlık bağlantısı kapatıldı.',
+                  trailing: TextButton(
+                    onPressed: _saglikIslemiSuruyor ? null : _tumGoogleModlariniBagla,
+                    child: const Text('Tümünü Bağla'),
+                  ),
+                ),
+                ...OzSaglikModu.values.map(
+                  (mod) {
+                    final bagli = _googleModDurumlari[mod] ?? false;
+                    return Column(
+                      children: [
+                        const Divider(height: 1, indent: 16, endIndent: 16),
+                        SwitchListTile(
+                          activeThumbColor: AppTheme.klasikKirmizi,
+                          secondary: Icon(
+                            _modIkonu(mod),
+                            color: AppTheme.klasikKirmizi,
+                          ),
+                          title: Text(
+                            _modAdi(mod),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          subtitle: Text(_modAciklamasi(mod, bagli)),
+                          value: bagli,
+                          onChanged: _saglikIslemiSuruyor
+                              ? null
+                              : (deger) => _googleModDegistir(mod, deger),
+                        ),
+                      ],
                     );
                   },
                 ),

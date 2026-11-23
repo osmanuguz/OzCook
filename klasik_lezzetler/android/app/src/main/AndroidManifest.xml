@@ -1,10 +1,40 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- İnternet İzni -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <!-- OzDay: Su ve Beslenme/Kalori -->
+    <uses-permission android:name="android.permission.health.READ_HYDRATION"/>
+    <uses-permission android:name="android.permission.health.WRITE_HYDRATION"/>
+    <uses-permission android:name="android.permission.health.READ_NUTRITION"/>
+    <uses-permission android:name="android.permission.health.WRITE_NUTRITION"/>
+
+    <!-- OzFit: Adım, Aktif Kalori ve Antrenman -->
+    <uses-permission android:name="android.permission.health.READ_STEPS"/>
+    <uses-permission android:name="android.permission.health.WRITE_STEPS"/>
+    <uses-permission android:name="android.permission.health.READ_ACTIVE_CALORIES_BURNED"/>
+    <uses-permission android:name="android.permission.health.WRITE_ACTIVE_CALORIES_BURNED"/>
+    <uses-permission android:name="android.permission.health.READ_EXERCISE"/>
+    <uses-permission android:name="android.permission.health.WRITE_EXERCISE"/>
+
+    <!-- OzHealth: Kalp Atış Hızı ve Uyku -->
+    <uses-permission android:name="android.permission.health.READ_HEART_RATE"/>
+    <uses-permission android:name="android.permission.health.READ_SLEEP"/>
+
+    <!-- Health Connect Uygulama Sorgusu -->
+    <queries>
+        <package android:name="com.google.android.apps.healthdata" />
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
 
     <application
-        android:label="Ozcook"
+        android:label="klasik_lezzetler"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -14,15 +44,34 @@
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
+
             <meta-data
-              android:name="io.flutter.embedding.android.NormalTheme"
-              android:resource="@style/NormalTheme"
-              />
+                android:name="io.flutter.embedding.android.NormalTheme"
+                android:resource="@style/NormalTheme" />
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
+            <!-- Health Connect İzin Penceresi Tetikleyicisi -->
+            <intent-filter>
+                <action android:name="androidx.health.ACTION_SHOW_PERMISSIONS_RATIONALE" />
+            </intent-filter>
         </activity>
+
+        <!-- Android 14+ Health Connect İzin Yönlendirmesi -->
+        <activity-alias
+            android:name="ViewPermissionUsageActivity"
+            android:exported="true"
+            android:targetActivity=".MainActivity"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
