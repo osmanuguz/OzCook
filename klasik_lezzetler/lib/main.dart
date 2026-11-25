@@ -292,7 +292,7 @@ class _OzcookAnaKabukState extends State<OzcookAnaKabuk> {
         onKaydedilenlerDegisti: (yeniSet) {
           setState(() => _kaydedilenIdler = yeniSet);
         },
-        koyuTemaAktif: widget.koyuTemaAktif,
+        koyuTemaAktif: koyuTemaMi,
         onKoyuTemaDegisti: widget.onKoyuTemaDegisti,
       ),
     ];
