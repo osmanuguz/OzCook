@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:klasik_lezzetler/screens/ai_planlayici_ekrani.dart';
 import 'package:klasik_lezzetler/screens/ana_sayfa_ekrani.dart';
 import 'package:klasik_lezzetler/screens/ayarlar_ekrani.dart';
+import 'package:klasik_lezzetler/screens/dolap_ekrani.dart';
 import 'package:klasik_lezzetler/screens/giris_ekrani.dart';
 import 'package:klasik_lezzetler/screens/oz_modlari_ekrani.dart';
 import 'package:klasik_lezzetler/services/bildirim_servisi.dart';
@@ -81,13 +83,13 @@ class _OzcookAppState extends State<OzcookApp> {
               onKoyuTemaDegisti: _koyuTemaDegistir,
             ),
         '/ozfit': (context) => OzcookAnaKabuk(
-              baslangicSekmesi: 1,
+              baslangicSekmesi: 3,
               baslangicModu: 'OzFit',
               koyuTemaAktif: koyuTemaAktif,
               onKoyuTemaDegisti: _koyuTemaDegistir,
             ),
         '/ozday': (context) => OzcookAnaKabuk(
-              baslangicSekmesi: 1,
+              baslangicSekmesi: 3,
               baslangicModu: 'Kalori & OzDay',
               koyuTemaAktif: koyuTemaAktif,
               onKoyuTemaDegisti: _koyuTemaDegistir,
@@ -282,6 +284,8 @@ class _OzcookAnaKabukState extends State<OzcookAnaKabuk> {
         kaydedilenIdler: _kaydedilenIdler,
         onKaydetmeDegisti: _kaydetmeDurumunuDegistir,
       ),
+      const DolapEkrani(),
+      const AiPlanlayiciEkrani(),
       OzModlariEkrani(baslangicModu: widget.baslangicModu),
       AyarlarEkrani(
         mevcutKullanici: _kullanici,
@@ -299,6 +303,8 @@ class _OzcookAnaKabukState extends State<OzcookAnaKabuk> {
 
     const sayfaEtiketleri = <String>[
       'Ana Sayfa',
+      'Dolapta Ne Var?',
+      'AI Asistan & Plan',
       'Oz Modları',
       'Ayarlar',
     ];
@@ -358,10 +364,10 @@ class _OzcookAnaKabukState extends State<OzcookAnaKabuk> {
           IconButton(
             tooltip: 'Ayarlar',
             icon: Icon(
-              _seciliIndex == 2 ? Icons.settings : Icons.settings_outlined,
+              _seciliIndex == 4 ? Icons.settings : Icons.settings_outlined,
               color: AppTheme.safBeyaz,
             ),
-            onPressed: () => setState(() => _seciliIndex = 2),
+            onPressed: () => setState(() => _seciliIndex = 4),
           ),
         ],
       ),
@@ -393,6 +399,16 @@ class _OzcookAnaKabukState extends State<OzcookAnaKabuk> {
               icon: Icon(Icons.home_outlined),
               activeIcon: Icon(Icons.home),
               label: 'Ana Sayfa',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.kitchen_outlined),
+              activeIcon: Icon(Icons.kitchen),
+              label: 'Dolap',
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.auto_awesome_outlined),
+              activeIcon: Icon(Icons.auto_awesome),
+              label: 'AI Plan',
             ),
             BottomNavigationBarItem(
               icon: Icon(Icons.tune_outlined),

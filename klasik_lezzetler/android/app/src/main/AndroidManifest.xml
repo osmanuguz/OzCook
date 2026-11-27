@@ -1,5 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+
+
     <!-- İnternet İzni -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
@@ -31,7 +33,7 @@
     </queries>
 
     <application
-        android:label="klasik_lezzetler"
+        android:label="OzCook"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
 
